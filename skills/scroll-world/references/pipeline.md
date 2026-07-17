@@ -194,6 +194,55 @@ Step 1.5 interview.
    `stillMobile` so the poster matches the portrait video's frame 0 (no landscape→portrait
    flash when the clip paints). Engine support: `sections[k].stillMobile`.
 
+## 7. Monid backend — status + qualification harness (SKILL Step 4 → Monid)
+
+**As of 2026-07-17 no Monid endpoint qualifies for the chain**: `bytedance
+/v1/video/seedance-2.0(-mini/-fast)` are text-to-video only, and `minimax
+/v1/video_generation` silently drops `first_frame_image` whenever `prompt` is also
+present (unrelated t2v output + wrong price cell billed). Do not wire Monid legs until
+the probes below pass. The catalog moves — re-check per build.
+
+General call pattern (runs take 1–120 s; result URLs expire, download immediately):
+
+```bash
+monid discover -q "image to video"
+monid inspect -p <provider> -e <endpoint>        # read the Input schema — the whole test
+monid run -p <provider> -e <endpoint> -f body.json -w 120 -j > run.json
+jq -r '.cost, .status' run.json                  # check billed cost EVERY run
+# video URL lives at .output.download_url (minimax) or .output.content.video_url (bytedance)
+```
+
+Qualification probes — run BOTH before trusting a new/changed endpoint with a chain
+(each costs one cheap clip; use the smallest resolution/duration the schema allows):
+
+```bash
+# Probe 1 — image-only frame-lock: does the video actually start on your frame?
+python3 - <<'EOF'   # build body.json with a small JPEG data URL (big base64 bodies 500)
+import base64, io, json
+from PIL import Image
+im = Image.open("still.png").convert("RGB"); im.thumbnail((1536,1536))
+buf = io.BytesIO(); im.save(buf, "JPEG", quality=85)
+json.dump({"model": "<explicit>", "first_frame_image":
+  "data:image/jpeg;base64,"+base64.b64encode(buf.getvalue()).decode(),
+  "resolution": "<explicit>", "duration": 6}, open("body.json","w"))
+EOF
+monid run -p minimax -e /v1/video_generation -f body.json -w 120 -j > run.json
+curl -fsSL "$(jq -r '.output.download_url' run.json)" -o probe.mp4
+ffmpeg -y -ss 0 -i probe.mp4 -frames:v 1 f0.png
+# PASS = f0.png matches still.png to codec noise (eyeball + PSNR ≳ 30 dB)
+# AND jq .cost matches the advertised matrix cell.
+
+# Probe 2 — prompt steering: add "prompt": "<forward-glide leg prompt>" to body.json,
+# re-run. PASS = f0 still matches AND the camera obeyed AND cost unchanged.
+# (This is the probe the minimax endpoint fails today: the image vanishes.)
+```
+
+Both pass → the endpoint joins as a pay-per-clip tier: arch-A legs if start-image
+only, full roster if it also takes an end-frame. Feed each leg the previous leg's
+actual last frame as the data URL, exactly like the Higgsfield arch-A loop — and note
+MiniMax output aspect follows the *input image*, so composite stills onto a 16:9 (or
+9:16) canvas before leg 0, same trick as the §6b portrait canvases.
+
 ## Notes
 
 - `.[0].result_url` is the field on the `--wait --json` job object. `.min_result_url` is

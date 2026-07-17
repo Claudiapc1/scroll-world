@@ -54,6 +54,12 @@ cp -R scroll-world/skills/scroll-world ~/.codex/skills/    # Codex
 - The [Codex CLI](https://github.com/openai/codex) (optional) — if present, the scene
   stills can be generated through Codex's built-in `image_gen` (the same GPT Image
   model), billed to a ChatGPT subscription instead of Higgsfield credits.
+- The [Monid CLI](https://monid.ai) (optional) — recognized as a candidate
+  pay-per-clip video backend. The skill capability-checks its endpoints before use
+  (the chain needs start/end-frame conditioning); as of 2026-07 none qualify —
+  Monid's Seedance endpoints are text-to-video only, and its MiniMax endpoint drops
+  the start frame whenever a prompt is present — so it documents the findings and
+  the re-qualification probes instead of wiring broken legs.
 
 ## What it does
 

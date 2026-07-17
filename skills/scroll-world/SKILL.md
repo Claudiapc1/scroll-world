@@ -8,8 +8,10 @@ description: >
   or any art direction you pick). The skill interviews the user for the topic, the
   story beats/sections, and brand kit, then generates cohesive scenes + seamless camera
   clips with Higgsfield and wires a portable, framework-agnostic scroll-scrub engine.
-  Use when the user wants a "3D world" / "browse-through-the-industry" hero, a scroll
-  cinematic, a diorama landing, or to turn a business into a scrollable world.
+  Knows the Monid CLI as a candidate pay-per-clip video backend (capability-checked
+  before use — see Step 4). Use when the user wants a "3D world" /
+  "browse-through-the-industry" hero, a scroll cinematic, a diorama landing, or to
+  turn a business into a scrollable world.
 allowed-tools: Bash, Read, Write, Edit, AskUserQuestion, Skill
 ---
 
@@ -53,7 +55,12 @@ not the framework.
    through Codex's built-in `image_gen` (the same gpt-image-2 model) billed to the
    user's ChatGPT subscription instead of Higgsfield credits — offer it at
    Step 1.6, command in Step 2. Absence just removes the option.
-5. Caveats: macOS ships **bash 3.2** (no `declare -A`); don't use associative arrays in
+5. **(Optional) Monid CLI** — if `monid` is on `$PATH` with an active key
+   (`monid keys list`), its pay-per-USD catalog is a candidate video backend and a
+   top-up path when Higgsfield credits run dry — but it must pass the capability
+   check first, and as of 2026-07 **no Monid endpoint qualifies for the chain**
+   (Step 4 → Monid backend). Absence just removes the option.
+6. Caveats: macOS ships **bash 3.2** (no `declare -A`); don't use associative arrays in
    scripts. Higgsfield generations take **3–8 min each** — always run them detached
    (background) and poll, never a foreground blocking call. Reference-by-job-UUID is
    rejected by media flags — pass **local file paths** to `--image/--start-image/--end-image`.
@@ -131,6 +138,14 @@ default. Cover:
      Draft doubles as the previz path: run the whole chain cheap, approve the
      journey, re-render final legs on Standard (pipeline.md Notes) — suggest it
      unprompted when the balance reads tight.
+   - **Monid (pay-per-clip USD)** — mention only if bootstrapped (Step 0.5). It's
+     a *billing* alternative (per-clip dollars, `monid balance`, no subscription),
+     not a quality tier: for the same model it prices at rough parity with
+     Higgsfield's Plus-monthly credit rate (verified 2026-07: MiniMax Hailuo-2.3
+     768P/6s ≈ $0.28 on both; Higgsfield annual plans undercut it). And it
+     currently fields **no chain-capable endpoint** (Step 4 → Monid backend), so
+     today it cannot render the world — re-check its catalog before each build,
+     it moves.
    - **Stills source** (only offer if the Codex CLI is present, Step 0.4):
      Higgsfield `gpt_image_2` (spends credits) vs **Codex `image_gen`** — the same
      gpt-image-2 model billed to the ChatGPT subscription (zero credits; counts
@@ -241,6 +256,16 @@ doesn't drop into the pipeline as-is. It's not in the default roster; only reach
 wire it by hand, if architecture A's sequential render time is a proven bottleneck and you've
 benchmarked it as actually faster.)
 
+One more architecture-A-only candidate, worth knowing because it is by far the cheapest
+probe: **`minimax_hailuo`** (Hailuo-2.3, ~6 credits per 768p/6s clip vs 22–72 for the
+roster). Verified 2026-07: `--start-image` + prompt frame-locks (output frame 0 ≡ input,
+PSNR 33 dB) and a forward-glide prompt was obeyed, gently. Constraints: the 2.3 variant
+rejects `end_image` (no connectors → arch A only), output aspect follows the input image
+(hand it a 16:9 canvas, not a bare 3:2 still), motion runs subtler than seedance, and
+don't pass `--resolution` (the CLI mis-types the enum; the 768 default works — 1080
+supports 6s only). One clip ≠ a chain: qualify a leg-to-leg handoff before betting a
+full build on it.
+
 Rules:
 - **One model for all chained clips.** Each renderer has its own motion/color/grain
   character; mixing models mid-chain keeps *position* continuity (frames still hand off)
@@ -252,6 +277,40 @@ Rules:
   ship a non-seamless build to satisfy a model request.
 - The pipeline scripts take the model as `$VMODEL` with per-model flags already cased
   out (`references/pipeline.md`).
+
+### Monid backend — capability-check protocol (2026-07 status: declined)
+
+Monid (`monid` CLI, Step 0.5) exposes hundreds of pay-per-USD endpoints, including
+video models that share names with the roster — **the name overlap is a trap**. The
+frame-lock rule applies unchanged, and the check is the endpoint's *schema*, not the
+model name:
+
+```bash
+monid discover -q "image to video"
+monid inspect -p <provider> -e <endpoint>   # read the Input schema, not the title
+```
+
+Qualification = the body schema takes a start-frame image for every chained clip
+(plus an end-frame for connectors), and a paid probe confirms the image actually
+steers the render. Verified 2026-07-17:
+
+| Endpoint | Schema verdict | Chain? |
+|---|---|---|
+| `bytedance /v1/video/seedance-2.0` (also `-mini`, `-fast`) | `content` accepts **text items only** — no image conditioning at all, despite the Seedance name | ✗ declined |
+| `minimax /v1/video_generation` (Hailuo-2.3) | Has `first_frame_image` (data-URL ok) — but sending `prompt` **and** the image together silently drops the image (unrelated t2v output, wrong price cell billed: $0.56 vs $0.28). Image-only requests frame-lock perfectly (probe: output frame 0 ≡ input, PSNR 33 dB) — and have no camera control. | ✗ declined |
+
+So Monid's `/v1/video/seedance-2.0` is **not** the roster's `seedance_2_0`: same
+model family, different exposed capability (t2v vs i2v). Decline it with the
+standard one-liner — it can't hold a seam — and use a roster model. If the user's
+real goal is pay-per-clip billing, say that plainly: today that means Higgsfield.
+
+**Re-qualification (the catalog moves):** when a later `monid inspect` shows a
+start(+end)-frame schema, run the two paid probes from pipeline.md → "Monid
+backend" before trusting it: (1) an image-only clip from a real still — the
+video's frame 0 must match the input to codec noise; (2) a prompt+image clip —
+the image must still steer the output *and* `cost.value` must match the
+advertised matrix cell. Both pass → wire it as a pay-per-clip tier (arch A if
+start-only; full roster if start+end).
 
 ### A) Continuous forward take — RECOMMENDED for grounded / realistic / walkthrough
 One camera that only ever glides **forward**, first scene through last, as a single take.
@@ -582,6 +641,21 @@ is the thing most likely to be wrong:
   start-image-only model where a connector needs an `--end-image`. One model for the whole
   chain; the only cheap tier is `seedance_2_0_mini`, which keeps frame-locking so it stays
   seamless. (Any model with reference-only inputs can't hold a seam at all — Step 4.)
+- **Monid "seedance" ≠ roster `seedance_2_0`** → Monid's bytedance video endpoints are
+  text-to-video only; no prompt can make them hold a seam. Capability lives in the
+  endpoint *schema* (`monid inspect`), never the model name (Step 4 → Monid backend).
+- **Monid minimax drops the image when a prompt is present** → `prompt` +
+  `first_frame_image` together returns an unrelated t2v clip AND bills the wrong matrix
+  cell ($0.56 vs $0.28 observed). Image-only frame-locks but has no camera control.
+  Until the wrapper is fixed, the endpoint can't chain. (The model itself is fine —
+  the same prompt+image via Higgsfield `minimax_hailuo` frame-locks.)
+- **Monid request fails with "Unexpected token '<'"** → the gateway returned an HTML
+  error page, usually a too-big body: a ~4 MB base64 image failed, ~250 KB passed.
+  JPEG-compress any inlined frame (≤1536px, q85) before data-URL'ing it.
+- **Monid billing surprises** → matrix-priced endpoints bill by selector match: pass
+  every selector field explicitly (`model`, `resolution`, `duration`) and read
+  `cost.value` off the run result after each clip. Result URLs expire (~24 h on
+  bytedance) — download immediately.
 - **White-box scenes** → `gpt_image_2` returns a solid bg; either match the page bg to it
   or knock it out (Step 3).
 - **bash 3.2** on macOS → no associative arrays in scripts.
