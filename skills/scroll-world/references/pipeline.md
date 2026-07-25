@@ -12,6 +12,8 @@ NAMES="farm kitchen shop delivery plaza finale"   # <-- your section ids, in ord
 # Must accept --start-image AND --end-image (verify: higgsfield model get <model>):
 # seedance_2_0 | kling3_0 | seedance_2_0_mini (draft tier). Reference-only models can't
 # hold a seam; models without --mode (e.g. kling3_0_turbo) need their own flag branch below.
+# Pay-per-clip billing instead of credits: same seedance chain via Monid — §7 functions
+# (gen_dive_monid/gen_conn_monid with VRES=1080p|720p|480p instead of VOPTS).
 VMODEL=seedance_2_0
 case "$VMODEL" in                                  # per-model flags + durations (bash 3.2 safe)
   kling3_0)          VOPTS="--mode std --sound off";          DIVE_DUR=10; CONN_DUR=5 ;;  # no --resolution param on Kling
@@ -194,54 +196,92 @@ Step 1.5 interview.
    `stillMobile` so the poster matches the portrait video's frame 0 (no landscape→portrait
    flash when the clip paints). Engine support: `sections[k].stillMobile`.
 
-## 7. Monid backend — status + qualification harness (SKILL Step 4 → Monid)
+## 7. Monid backend — Seedance 2.0 pay-per-clip (qualified 2026-07-25)
 
-**As of 2026-07-17 no Monid endpoint qualifies for the chain**: `bytedance
-/v1/video/seedance-2.0(-mini/-fast)` are text-to-video only, and `minimax
-/v1/video_generation` silently drops `first_frame_image` whenever `prompt` is also
-present (unrelated t2v output + wrong price cell billed). Do not wire Monid legs until
-the probes below pass. The catalog moves — re-check per build.
-
-General call pattern (runs take 1–120 s; result URLs expire, download immediately):
-
-```bash
-monid discover -q "image to video"
-monid inspect -p <provider> -e <endpoint>        # read the Input schema — the whole test
-monid run -p <provider> -e <endpoint> -f body.json -w 120 -j > run.json
-jq -r '.cost, .status' run.json                  # check billed cost EVERY run
-# video URL lives at .output.download_url (minimax) or .output.content.video_url (bytedance)
-```
-
-Qualification probes — run BOTH before trusting a new/changed endpoint with a chain
-(each costs one cheap clip; use the smallest resolution/duration the schema allows):
+`bytedance /v1/video/seedance-2.0` via Monid is the roster's `seedance_2_0` billed
+per clip in USD (SKILL Step 4 → Monid backend; both probes passed). Same chain laws
+as everywhere else — only the I/O differs: **frames ride Monid's free `sfs` file
+system** (inline base64 is rejected), **`ratio` must be explicit** (the adaptive
+default follows the input image's aspect), and runs are fire-and-poll. Token-priced
+`w×h×24×sec/1024` at $7/1M (480p/720p), $7.7/1M (1080p) — measured: 1080p ≈ $2.99
+dive / $1.87 connector; 720p ≈ $1.21 / $0.76; 480p previz ≈ $0.28 / $0.35.
 
 ```bash
-# Probe 1 — image-only frame-lock: does the video actually start on your frame?
-python3 - <<'EOF'   # build body.json with a small JPEG data URL (big base64 bodies 500)
-import base64, io, json
-from PIL import Image
-im = Image.open("still.png").convert("RGB"); im.thumbnail((1536,1536))
-buf = io.BytesIO(); im.save(buf, "JPEG", quality=85)
-json.dump({"model": "<explicit>", "first_frame_image":
-  "data:image/jpeg;base64,"+base64.b64encode(buf.getvalue()).decode(),
-  "resolution": "<explicit>", "duration": 6}, open("body.json","w"))
-EOF
-monid run -p minimax -e /v1/video_generation -f body.json -w 120 -j > run.json
-curl -fsSL "$(jq -r '.output.download_url' run.json)" -o probe.mp4
-ffmpeg -y -ss 0 -i probe.mp4 -frames:v 1 f0.png
-# PASS = f0.png matches still.png to codec noise (eyeball + PSNR ≳ 30 dB)
-# AND jq .cost matches the advertised matrix cell.
+# helper: upload a local frame to sfs, print a signed public URL for it ($0).
+# NB: /cat and /ls take the SAME relative path you gave /put — not the
+# "home/..."-prefixed path /put echoes back (that one 404s).
+monid_frame_url() { # localPng remoteName  (JPEG-compresses on the way up)
+  jpg="$WORK/sfs_$2.jpg"
+  ffmpeg -v error -y -i "$1" -vf "scale='min(1536,iw)':-2" -q:v 2 "$jpg"
+  size=$(stat -f%z "$jpg")
+  up=$(NO_COLOR=1 monid run -p sfs -e /put \
+    -i "{\"path\":\"chain/$2.jpg\",\"sizeBytes\":$size,\"ttl\":\"1h\"}" -w 60 -j \
+    | jq -r '.output.uploadUrl')
+  curl -fsS -T "$jpg" "$up" > /dev/null
+  NO_COLOR=1 monid run -p sfs -e /cat -i "{\"path\":\"chain/$2.jpg\",\"ttl\":\"1d\"}" \
+    -w 60 -j | jq -r '.output.url'
+}
 
-# Probe 2 — prompt steering: add "prompt": "<forward-glide leg prompt>" to body.json,
-# re-run. PASS = f0 still matches AND the camera obeyed AND cost unchanged.
-# (This is the probe the minimax endpoint fails today: the image vanishes.)
+# fire-and-poll (the CLI's -w caps at 120s and seedance can exceed it)
+monid_wait() { # runId outJson
+  while :; do
+    NO_COLOR=1 monid runs get -r "$1" -j > "$2" 2>/dev/null
+    case "$(jq -r '.status // empty' "$2")" in
+      COMPLETED|FAILED|BLOCKED|STOPPED|TIME_OUT) break ;;
+    esac
+    sleep 8
+  done
+}
+
+gen_dive_monid() { # name   (VRES=1080p|720p|480p; DIVE_DUR as usual)
+  furl=$(monid_frame_url "$WORK/still_$1.png" "still_$1")
+  jq -n --arg p "$(cat "$WORK/dive_$1.txt")" --arg u "$furl" --arg r "$VRES" \
+    '{content:[{type:"text",text:$p},
+               {type:"image_url",image_url:{url:$u},role:"first_frame"}],
+      resolution:$r, duration:'"$DIVE_DUR"', ratio:"16:9", generate_audio:false}' \
+    > "$WORK/dive_$1.body.json"
+  rid=$(NO_COLOR=1 monid run -p bytedance -e /v1/video/seedance-2.0 \
+    -f "$WORK/dive_$1.body.json" -j | jq -r '.runId')
+  monid_wait "$rid" "$WORK/dive_$1.json"
+  url=$(jq -r '.output.content.video_url // empty' "$WORK/dive_$1.json")
+  [ -n "$url" ] && curl -fsSL "$url" -o "$WORK/dive_$1.mp4" \
+    && echo "dive $1 ok (\$$(jq -r '.cost.value' "$WORK/dive_$1.json"))" \
+    || echo "dive $1 FAIL ($(jq -r '.status' "$WORK/dive_$1.json"))"
+}
+
+gen_conn_monid() { # i startPng endPng
+  su=$(monid_frame_url "$2" "conn$1_start"); eu=$(monid_frame_url "$3" "conn$1_end")
+  jq -n --arg p "$(cat "$WORK/conn_$1.txt")" --arg s "$su" --arg e "$eu" --arg r "$VRES" \
+    '{content:[{type:"text",text:$p},
+               {type:"image_url",image_url:{url:$s},role:"first_frame"},
+               {type:"image_url",image_url:{url:$e},role:"last_frame"}],
+      resolution:$r, duration:'"$CONN_DUR"', ratio:"16:9", generate_audio:false}' \
+    > "$WORK/conn_$1.body.json"
+  rid=$(NO_COLOR=1 monid run -p bytedance -e /v1/video/seedance-2.0 \
+    -f "$WORK/conn_$1.body.json" -j | jq -r '.runId')
+  monid_wait "$rid" "$WORK/conn_$1.json"
+  url=$(jq -r '.output.content.video_url // empty' "$WORK/conn_$1.json")
+  [ -n "$url" ] && curl -fsSL "$url" -o "$WORK/conn_$1.mp4" \
+    && echo "conn $1 ok (\$$(jq -r '.cost.value' "$WORK/conn_$1.json"))" \
+    || echo "conn $1 FAIL ($(jq -r '.status' "$WORK/conn_$1.json"))"
+}
 ```
 
-Both pass → the endpoint joins as a pay-per-clip tier: arch-A legs if start-image
-only, full roster if it also takes an end-frame. Feed each leg the previous leg's
-actual last frame as the data URL, exactly like the Higgsfield arch-A loop — and note
-MiniMax output aspect follows the *input image*, so composite stills onto a 16:9 (or
-9:16) canvas before leg 0, same trick as the §6b portrait canvases.
+Drop-in for §2/§4: same loops, `gen_dive_monid`/`gen_conn_monid` instead of
+`gen_dive`/`gen_conn` (mobile chain: `ratio:"9:16"` and the §6b portrait canvases).
+Result URLs expire (~24–48 h) — the functions download immediately. Read the billed
+`cost.value` per clip (echoed in the ok-line) and `monid balance` between phases; a
+`BLOCKED` status is a workspace budget/run cap — terminal, surface it to the user.
+Frame extraction, encoding, QA: identical to the Higgsfield path.
+
+**Qualification harness for future/changed endpoints** (each probe = one cheap 480p
+clip): (1) prompt + first_frame from a real still → downloaded video's frame 0 must
+match the still (eyeball + PSNR ≳ 30 dB) and `cost.value` must match the advertised
+cell; (2) add a last_frame from a *different* still → the final frame must land on
+that composition (Seedance-style near-miss ok — the crossfade covers it). Known
+failure to watch for (it's why the harness exists): `minimax /v1/video_generation`
+still silently drops the image when `prompt` is present — image-only output proves
+nothing about steerability.
 
 ## Notes
 

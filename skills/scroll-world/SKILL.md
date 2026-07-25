@@ -8,8 +8,8 @@ description: >
   or any art direction you pick). The skill interviews the user for the topic, the
   story beats/sections, and brand kit, then generates cohesive scenes + seamless camera
   clips with Higgsfield and wires a portable, framework-agnostic scroll-scrub engine.
-  Knows the Monid CLI as a candidate pay-per-clip video backend (capability-checked
-  before use — see Step 4). Use when the user wants a "3D world" /
+  Supports the Monid CLI as a qualified pay-per-clip video backend (Seedance 2.0
+  in USD — capability re-checked each build, see Step 4). Use when the user wants a "3D world" /
   "browse-through-the-industry" hero, a scroll cinematic, a diorama landing, or to
   turn a business into a scrollable world.
 allowed-tools: Bash, Read, Write, Edit, AskUserQuestion, Skill
@@ -56,10 +56,11 @@ not the framework.
    user's ChatGPT subscription instead of Higgsfield credits — offer it at
    Step 1.6, command in Step 2. Absence just removes the option.
 5. **(Optional) Monid CLI** — if `monid` is on `$PATH` with an active key
-   (`monid keys list`), its pay-per-USD catalog is a candidate video backend and a
-   top-up path when Higgsfield credits run dry — but it must pass the capability
-   check first, and as of 2026-07 **no Monid endpoint qualifies for the chain**
-   (Step 4 → Monid backend). Absence just removes the option.
+   (`monid keys list`), Monid's `bytedance /v1/video/seedance-2.0` is a qualified
+   pay-per-USD chain backend (both probes passed 2026-07-25 — Step 4 → Monid
+   backend): per-clip dollar billing instead of Higgsfield credits, `monid
+   balance` for the wallet. Frames travel via Monid's free workspace file system
+   (`sfs`), not inline base64. Absence just removes the option.
 6. Caveats: macOS ships **bash 3.2** (no `declare -A`); don't use associative arrays in
    scripts. Higgsfield generations take **3–8 min each** — always run them detached
    (background) and poll, never a foreground blocking call. Reference-by-job-UUID is
@@ -138,14 +139,21 @@ default. Cover:
      Draft doubles as the previz path: run the whole chain cheap, approve the
      journey, re-render final legs on Standard (pipeline.md Notes) — suggest it
      unprompted when the balance reads tight.
-   - **Monid (pay-per-clip USD)** — mention only if bootstrapped (Step 0.5). It's
-     a *billing* alternative (per-clip dollars, `monid balance`, no subscription),
-     not a quality tier: for the same model it prices at rough parity with
-     Higgsfield's Plus-monthly credit rate (verified 2026-07: MiniMax Hailuo-2.3
-     768P/6s ≈ $0.28 on both; Higgsfield annual plans undercut it). And it
-     currently fields **no chain-capable endpoint** (Step 4 → Monid backend), so
-     today it cannot render the world — re-check its catalog before each build,
-     it moves.
+   - **Monid (pay-per-clip USD)** — offer only if bootstrapped (Step 0.5). Same
+     Seedance 2.0 chain, billed per clip in dollars instead of credits (qualified
+     2026-07-25; wiring in pipeline.md → Monid backend). Token-priced:
+     `width × height × 24 × seconds / 1024` tokens at $7/1M (480p/720p) or
+     $7.7/1M (1080p) — measured: 1080p 8s dive ≈ $2.99, 5s connector ≈ $1.87,
+     720p ≈ $1.21 / $0.76, 480p previz ≈ $0.28 / $0.35. An N=6 desktop chain ≈
+     $27 at 1080p / ~$11 at 720p vs Higgsfield Plus-monthly ≈ $32 / $16 — ~15%
+     cheaper per clip, parity with Plus-annual, and the real differences are
+     structural: pay-per-use (no subscription, no monthly expiry) and a top-up
+     path when credits run dry mid-build. It's the same underlying model
+     (`seedance_2_0` ≙ Monid's `seedance-2.0`), so finishing a stranded chain on
+     Monid is a reasonable rescue — but the serving stacks differ and
+     cross-provider seam character is **untested**: eyeball the first rescued
+     seam before rendering the rest, same as any model swap. Check
+     `monid balance` before promising a build.
    - **Stills source** (only offer if the Codex CLI is present, Step 0.4):
      Higgsfield `gpt_image_2` (spends credits) vs **Codex `image_gen`** — the same
      gpt-image-2 model billed to the ChatGPT subscription (zero credits; counts
@@ -278,39 +286,49 @@ Rules:
 - The pipeline scripts take the model as `$VMODEL` with per-model flags already cased
   out (`references/pipeline.md`).
 
-### Monid backend — capability-check protocol (2026-07 status: declined)
+### Monid backend — QUALIFIED for the full chain (2026-07-25)
 
-Monid (`monid` CLI, Step 0.5) exposes hundreds of pay-per-USD endpoints, including
-video models that share names with the roster — **the name overlap is a trap**. The
-frame-lock rule applies unchanged, and the check is the endpoint's *schema*, not the
-model name:
+Monid's **`bytedance /v1/video/seedance-2.0`** passed both paid probes on
+2026-07-25 and is a sanctioned chain backend for **both architectures** — it is
+the roster's `seedance_2_0` served pay-per-USD (wiring in pipeline.md → "Monid
+backend"):
 
-```bash
-monid discover -q "image to video"
-monid inspect -p <provider> -e <endpoint>   # read the Input schema, not the title
-```
+- **Leg probe** (prompt + `first_frame` image): output frame 0 ≡ input still
+  (PSNR 31.6 dB), forward-glide prompt obeyed, billed the advertised cell
+  ($0.279 / 480p 4s).
+- **Connector probe** (prompt + `first_frame` + `last_frame`): start locked
+  (31.6 dB); the end **lands close but not pixel-perfect** (27.5 dB, same
+  composition, prop-level drift) — the exact end-image behavior Seedance shows
+  on Higgsfield, covered by the engine's seam crossfade and by using the next
+  dive's ACTUAL first frame as the end-image (Step 5 law, unchanged).
 
-Qualification = the body schema takes a start-frame image for every chained clip
-(plus an end-frame for connectors), and a paid probe confirms the image actually
-steers the render. Verified 2026-07-17:
+The I/O contract differs from the Higgsfield CLI — three rules:
 
-| Endpoint | Schema verdict | Chain? |
-|---|---|---|
-| `bytedance /v1/video/seedance-2.0` (also `-mini`, `-fast`) | `content` accepts **text items only** — no image conditioning at all, despite the Seedance name | ✗ declined |
-| `minimax /v1/video_generation` (Hailuo-2.3) | Has `first_frame_image` (data-URL ok) — but sending `prompt` **and** the image together silently drops the image (unrelated t2v output, wrong price cell billed: $0.56 vs $0.28). Image-only requests frame-lock perfectly (probe: output frame 0 ≡ input, PSNR 33 dB) — and have no camera control. | ✗ declined |
+1. **Images go by URL, never inline.** `content` items are
+   `{"type":"image_url","image_url":{"url":…},"role":"first_frame"|"last_frame"}`;
+   base64 data URLs are **rejected** ("Must be a public https:// URL or an
+   asset://<id> reference"). Local frames travel through Monid's free workspace
+   file system: `sfs /put` → `curl -T` the bytes → `sfs /cat` returns a signed
+   public URL to paste into the body ($0, explicitly built for this).
+2. **Pass `ratio` explicitly** (`16:9`, or `9:16` for the mobile chain) — the
+   adaptive default follows the input image's aspect instead.
+3. **Bill-check every clip**: cost is token-priced
+   (`w × h × 24 × sec / 1024` at $7–7.7/1M); read `cost.value` off each run.
 
-So Monid's `/v1/video/seedance-2.0` is **not** the roster's `seedance_2_0`: same
-model family, different exposed capability (t2v vs i2v). Decline it with the
-standard one-liner — it can't hold a seam — and use a roster model. If the user's
-real goal is pay-per-clip billing, say that plainly: today that means Higgsfield.
+History that shaped these rules (still true as of 2026-07-25): the seedance
+endpoints were text-to-video-only until late July 2026 — **re-`inspect` before
+each build; the catalog moves in both directions.** `minimax
+/v1/video_generation` (Hailuo-2.3) remains disqualified: sending `prompt` +
+`first_frame_image` together silently drops the image (unrelated t2v output,
+wrong price cell); image-only frame-locks (33 dB) but has no camera control.
 
-**Re-qualification (the catalog moves):** when a later `monid inspect` shows a
-start(+end)-frame schema, run the two paid probes from pipeline.md → "Monid
-backend" before trusting it: (1) an image-only clip from a real still — the
-video's frame 0 must match the input to codec noise; (2) a prompt+image clip —
-the image must still steer the output *and* `cost.value` must match the
-advertised matrix cell. Both pass → wire it as a pay-per-clip tier (arch A if
-start-only; full roster if start+end).
+**Qualification protocol for any new/changed Monid endpoint** (each probe is one
+cheap 480p clip): (1) prompt + first-frame from a real still — frame 0 must
+match the input to codec noise (PSNR ≳ 30 dB) and `cost.value` must match the
+advertised cell; (2) for connector duty, add a `last_frame` from a different
+still — the end must land on that composition (Seedance-style near-miss is fine,
+the crossfade covers it). Pass → pay-per-clip tier (arch A if start-only; full
+roster if start+end).
 
 ### A) Continuous forward take — RECOMMENDED for grounded / realistic / walkthrough
 One camera that only ever glides **forward**, first scene through last, as a single take.
@@ -641,21 +659,32 @@ is the thing most likely to be wrong:
   start-image-only model where a connector needs an `--end-image`. One model for the whole
   chain; the only cheap tier is `seedance_2_0_mini`, which keeps frame-locking so it stays
   seamless. (Any model with reference-only inputs can't hold a seam at all — Step 4.)
-- **Monid "seedance" ≠ roster `seedance_2_0`** → Monid's bytedance video endpoints are
-  text-to-video only; no prompt can make them hold a seam. Capability lives in the
-  endpoint *schema* (`monid inspect`), never the model name (Step 4 → Monid backend).
+- **Monid seedance rejects inline images** → "Must be a public https:// URL or an
+  asset://<id> reference": frames go through the free `sfs` file system
+  (put → `curl -T` → cat → signed URL; pipeline.md → Monid backend), never base64.
+  Quirk: `/put` echoes back `home/<path>`, but `/cat` and `/ls` want the **original
+  relative path** you gave `/put` — using the echoed path 404s.
+- **Monid clip wrong aspect** → the `ratio` default is adaptive and follows the input
+  image (a 3:2 still → a 4:3-ish video). Pass `--ratio` — `16:9` desktop, `9:16`
+  mobile chain — explicitly on every chained clip.
+- **Monid CLI "Polling timed out after 120s"** → only the local wait died; the run
+  continues server-side. Re-poll with `monid runs get -r <runId> -w 120` (find the id
+  in `monid runs list`). Result URLs expire (~24–48 h) — download immediately.
 - **Monid minimax drops the image when a prompt is present** → `prompt` +
   `first_frame_image` together returns an unrelated t2v clip AND bills the wrong matrix
   cell ($0.56 vs $0.28 observed). Image-only frame-locks but has no camera control.
-  Until the wrapper is fixed, the endpoint can't chain. (The model itself is fine —
-  the same prompt+image via Higgsfield `minimax_hailuo` frame-locks.)
-- **Monid request fails with "Unexpected token '<'"** → the gateway returned an HTML
-  error page, usually a too-big body: a ~4 MB base64 image failed, ~250 KB passed.
-  JPEG-compress any inlined frame (≤1536px, q85) before data-URL'ing it.
-- **Monid billing surprises** → matrix-priced endpoints bill by selector match: pass
-  every selector field explicitly (`model`, `resolution`, `duration`) and read
-  `cost.value` off the run result after each clip. Result URLs expire (~24 h on
-  bytedance) — download immediately.
+  Until the wrapper is fixed, that endpoint can't chain — use Monid's seedance-2.0.
+  (The model itself is fine — the same prompt+image via Higgsfield `minimax_hailuo`
+  frame-locks.)
+- **Monid billing surprises** → matrix/token-priced endpoints bill by selector match:
+  pass every selector field explicitly (`model`, `resolution`, `duration`) and read
+  `cost.value` off the run result after each clip. A big base64 field in any body can
+  also bounce as an HTML error page ("Unexpected token '<'") — another reason frames
+  travel by sfs URL.
+- **Monid schema changed since last build** → it happens (seedance was t2v-only until
+  late July 2026, then gained first/last-frame support). `monid inspect` before each
+  build; re-run the Step 4 qualification probes when the Input schema differs from
+  what pipeline.md documents.
 - **White-box scenes** → `gpt_image_2` returns a solid bg; either match the page bg to it
   or knock it out (Step 3).
 - **bash 3.2** on macOS → no associative arrays in scripts.
