@@ -12,8 +12,9 @@ NAMES="farm kitchen shop delivery plaza finale"   # <-- your section ids, in ord
 # Must accept --start-image AND --end-image (verify: higgsfield model get <model>):
 # seedance_2_0 | kling3_0 | seedance_2_0_mini (draft tier). Reference-only models can't
 # hold a seam; models without --mode (e.g. kling3_0_turbo) need their own flag branch below.
-# Pay-per-clip billing instead of credits: same seedance chain via Monid — §7 functions
-# (gen_dive_monid/gen_conn_monid with VRES=1080p|720p|480p instead of VOPTS).
+# DEFAULT backend: Monid pay-per-clip (§7 — gen_dive_monid/gen_conn_monid with
+# VRES=1080p|720p|480p instead of VOPTS). The gen_dive/gen_conn functions in §2/§4
+# below are the Higgsfield-credits FALLBACK (and the only home of kling3_0/mini).
 VMODEL=seedance_2_0
 case "$VMODEL" in                                  # per-model flags + durations (bash 3.2 safe)
   kling3_0)          VOPTS="--mode std --sound off";          DIVE_DUR=10; CONN_DUR=5 ;;  # no --resolution param on Kling
@@ -196,11 +197,13 @@ Step 1.5 interview.
    `stillMobile` so the poster matches the portrait video's frame 0 (no landscape→portrait
    flash when the clip paints). Engine support: `sections[k].stillMobile`.
 
-## 7. Monid backend — Seedance 2.0 pay-per-clip (qualified 2026-07-25)
+## 7. Monid backend — Seedance 2.0 pay-per-clip (the DEFAULT; qualified 2026-07-25)
 
 `bytedance /v1/video/seedance-2.0` via Monid is the roster's `seedance_2_0` billed
-per clip in USD (SKILL Step 4 → Monid backend; both probes passed). Same chain laws
-as everywhere else — only the I/O differs: **frames ride Monid's free `sfs` file
+per clip in USD, and the **default** chain backend (SKILL Step 4 → Monid backend;
+both probes passed) — use these functions in the §2/§4 loops unless the build fell
+back to Higgsfield credits. Same chain laws as everywhere else — only the I/O
+differs: **frames ride Monid's free `sfs` file
 system** (inline base64 is rejected), **`ratio` must be explicit** (the adaptive
 default follows the input image's aspect), and runs are fire-and-poll. Token-priced
 `w×h×24×sec/1024` at $7/1M (480p/720p), $7.7/1M (1080p) — measured: 1080p ≈ $2.99
@@ -267,8 +270,9 @@ gen_conn_monid() { # i startPng endPng
 }
 ```
 
-Drop-in for §2/§4: same loops, `gen_dive_monid`/`gen_conn_monid` instead of
-`gen_dive`/`gen_conn` (mobile chain: `ratio:"9:16"` and the §6b portrait canvases).
+Default usage in §2/§4: same loops, `gen_dive_monid`/`gen_conn_monid` in place of
+the Higgsfield `gen_dive`/`gen_conn` (mobile chain: `ratio:"9:16"` and the §6b
+portrait canvases). Previz: same functions with `VRES=480p`.
 Result URLs expire (~24–48 h) — the functions download immediately. Read the billed
 `cost.value` per clip (echoed in the ok-line) and `monid balance` between phases; a
 `BLOCKED` status is a workspace budget/run cap — terminal, surface it to the user.

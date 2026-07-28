@@ -8,8 +8,9 @@ description: >
   or any art direction you pick). The skill interviews the user for the topic, the
   story beats/sections, and brand kit, then generates cohesive scenes + seamless camera
   clips with Higgsfield and wires a portable, framework-agnostic scroll-scrub engine.
-  Supports the Monid CLI as a qualified pay-per-clip video backend (Seedance 2.0
-  in USD — capability re-checked each build, see Step 4). Use when the user wants a "3D world" /
+  The video chain renders through Monid by default (Seedance 2.0, pay-per-clip
+  USD — capability re-checked each build, see Step 4) with Higgsfield credits as
+  the fallback biller. Use when the user wants a "3D world" /
   "browse-through-the-industry" hero, a scroll cinematic, a diorama landing, or to
   turn a business into a scrollable world.
 allowed-tools: Bash, Read, Write, Edit, AskUserQuestion, Skill
@@ -19,8 +20,9 @@ allowed-tools: Bash, Read, Write, Edit, AskUserQuestion, Skill
 
 Produces a landing page where **scroll drives a camera**: it dives from outside a scene
 into its interior, then flies out and into the next scene, continuously, with no visible
-cuts. The visuals are AI-generated (Higgsfield); the page just scrubs pre-rendered video
-by scroll position. This is the same technique behind Apple's scroll-through product
+cuts. The visuals are AI-generated — stills via Higgsfield (or Codex), the video chain
+via **Monid by default** (pay-per-clip Seedance 2.0; Higgsfield credits as fallback) —
+and the page just scrubs pre-rendered video by scroll position. This is the same technique behind Apple's scroll-through product
 pages — the camera genuinely moves, scroll only drives time.
 
 **What you generate:** N scene stills → N "dive-in" camera clips → N-1 "connector" clips
@@ -42,25 +44,27 @@ not the framework.
 
 ## Step 0 — Bootstrap
 
-1. **Higgsfield CLI.** If `higgsfield` is not on `$PATH`, install per the
+1. **Monid CLI — the default video-chain backend.** Check `monid --version`,
+   `monid keys list` (active key) and `monid balance` — the chain is billed per
+   clip in USD (Step 1.6 has the numbers; a 1080p N=6 chain ≈ $27). If the CLI is
+   missing or the balance can't cover the chain, say so and fall back to
+   rendering the chain on Higgsfield credits instead — same model, same
+   pipeline, different biller (Step 4 → Monid backend).
+2. **Higgsfield CLI — still required even on the Monid path**: it renders the
+   scene stills (`gpt_image_2`) and is the home of the `kling3_0` NSFW fallback
+   and the fallback chain. If `higgsfield` is not on `$PATH`, install per the
    `higgsfield-generate` skill. If `higgsfield workspace list` fails auth, ask the user
    to run `higgsfield auth login` (interactive OAuth — you cannot run it) and, if needed,
-   `higgsfield workspace set <id>`. Confirm there are enough credits: a full run is
-   roughly `N` image gens + `(2N-1)` video gens.
-2. **ffmpeg / ffprobe** on `$PATH` (frame extraction + encoding).
-3. **An image tool** for background knockout if you want floating scenes: PIL
+   `higgsfield workspace set <id>`. Confirm credits cover the stills (~N image
+   gens) — plus `(2N-1)` video gens if the chain falls back here.
+3. **ffmpeg / ffprobe** on `$PATH` (frame extraction + encoding).
+4. **An image tool** for background knockout if you want floating scenes: PIL
    (`python3 -c "import PIL"`), or `cwebp`/`sips`. Optional — see Step 3.
-4. **(Optional) Codex CLI** — if `codex` is on `$PATH` (≥ 0.125) and
+5. **(Optional) Codex CLI** — if `codex` is on `$PATH` (≥ 0.125) and
    `codex login status` reports a ChatGPT login, the scene stills can be generated
    through Codex's built-in `image_gen` (the same gpt-image-2 model) billed to the
    user's ChatGPT subscription instead of Higgsfield credits — offer it at
    Step 1.6, command in Step 2. Absence just removes the option.
-5. **(Optional) Monid CLI** — if `monid` is on `$PATH` with an active key
-   (`monid keys list`), Monid's `bytedance /v1/video/seedance-2.0` is a qualified
-   pay-per-USD chain backend (both probes passed 2026-07-25 — Step 4 → Monid
-   backend): per-clip dollar billing instead of Higgsfield credits, `monid
-   balance` for the wallet. Frames travel via Monid's free workspace file system
-   (`sfs`), not inline base64. Absence just removes the option.
 6. Caveats: macOS ships **bash 3.2** (no `declare -A`); don't use associative arrays in
    scripts. Higgsfield generations take **3–8 min each** — always run them detached
    (background) and poll, never a foreground blocking call. Reference-by-job-UUID is
@@ -139,22 +143,24 @@ default. Cover:
      Draft doubles as the previz path: run the whole chain cheap, approve the
      journey, re-render final legs on Standard (pipeline.md Notes) — suggest it
      unprompted when the balance reads tight.
-   - **Monid (pay-per-clip USD)** — offer only if bootstrapped (Step 0.5). Same
-     Seedance 2.0 chain, billed per clip in dollars instead of credits (qualified
-     2026-07-25; wiring in pipeline.md → Monid backend). Token-priced:
-     `width × height × 24 × seconds / 1024` tokens at $7/1M (480p/720p) or
-     $7.7/1M (1080p) — measured: 1080p 8s dive ≈ $2.99, 5s connector ≈ $1.87,
-     720p ≈ $1.21 / $0.76, 480p previz ≈ $0.28 / $0.35. An N=6 desktop chain ≈
-     $27 at 1080p / ~$11 at 720p vs Higgsfield Plus-monthly ≈ $32 / $16 — ~15%
-     cheaper per clip, parity with Plus-annual, and the real differences are
-     structural: pay-per-use (no subscription, no monthly expiry) and a top-up
-     path when credits run dry mid-build. It's the same underlying model
-     (`seedance_2_0` ≙ Monid's `seedance-2.0`), so finishing a stranded chain on
-     Monid is a reasonable rescue — but the serving stacks differ and
-     cross-provider seam character is **untested**: eyeball the first rescued
-     seam before rendering the rest, same as any model swap. Check
-     `monid balance` before promising a build.
-   - **Stills source** (only offer if the Codex CLI is present, Step 0.4):
+   - **Backend — Monid is the DEFAULT biller for the chain** (Step 0.1; wiring
+     in pipeline.md → Monid backend). Same Seedance 2.0, per-clip USD instead of
+     credits. Token-priced `width × height × 24 × seconds / 1024` at $7/1M
+     (480p/720p) or $7.7/1M (1080p) — measured: 1080p 8s dive ≈ $2.99, 5s
+     connector ≈ $1.87; 720p ≈ $1.21 / $0.76; 480p ≈ $0.28 / $0.35. An N=6
+     desktop chain ≈ $27 at 1080p / ~$11 at 720p vs Higgsfield Plus-monthly ≈
+     $32 / $16 — ~15% cheaper per clip, parity with Plus-annual; structurally
+     better for one-off builds (pay-per-use, no monthly expiry). On Monid the
+     Draft/previz tier is simply the **same endpoint at 480p** — no model swap,
+     so previz→final stays one-model by construction. State `monid balance`
+     against the estimate; **fall back to Higgsfield credits** (per-model tiers
+     above) when the user prefers their subscription, the balance is short, or
+     the model must be `kling3_0` (Higgsfield-only). It's the same underlying
+     model (`seedance_2_0` ≙ Monid's `seedance-2.0`), so finishing a stranded
+     chain on the other biller is a reasonable rescue — but the serving stacks
+     differ and cross-provider seam character is **untested**: eyeball the first
+     rescued seam before rendering the rest, same as any model swap.
+   - **Stills source** (only offer if the Codex CLI is present, Step 0.5):
      Higgsfield `gpt_image_2` (spends credits) vs **Codex `image_gen`** — the same
      gpt-image-2 model billed to the ChatGPT subscription (zero credits; counts
      toward Codex usage limits; 1536×1024 output — exactly 3:2, slightly under
@@ -280,18 +286,22 @@ Rules:
   but the render-character shift reads as a subtle pop. The one sanctioned exception is
   the NSFW fallback for a single stubborn clip (Gotchas) — a slight character shift on
   one 5s connector beats a missing connector.
-- Default to `seedance_2_0`; honor a user's stated preference **only if the model
-  qualifies** (frame-locking). If it doesn't, say so and use a supported model — never
-  ship a non-seamless build to satisfy a model request.
+- Default to `seedance_2_0`, rendered through **Monid by default** (per-clip USD —
+  next section) with Higgsfield credits as the fallback biller (Step 0.1/1.6); honor
+  a user's stated preference **only if the model qualifies** (frame-locking). If it
+  doesn't, say so and use a supported model — never ship a non-seamless build to
+  satisfy a model request. `kling3_0` and `seedance_2_0_mini` exist only on the
+  Higgsfield side.
 - The pipeline scripts take the model as `$VMODEL` with per-model flags already cased
   out (`references/pipeline.md`).
 
-### Monid backend — QUALIFIED for the full chain (2026-07-25)
+### Monid backend — the DEFAULT chain biller (qualified 2026-07-25)
 
 Monid's **`bytedance /v1/video/seedance-2.0`** passed both paid probes on
-2026-07-25 and is a sanctioned chain backend for **both architectures** — it is
-the roster's `seedance_2_0` served pay-per-USD (wiring in pipeline.md → "Monid
-backend"):
+2026-07-25 and is the **default** way this skill renders the chain, for **both
+architectures** — it is the roster's `seedance_2_0` served pay-per-USD (wiring in
+pipeline.md → "Monid backend"; Higgsfield renders the chain only as the fallback
+biller or for Higgsfield-only models):
 
 - **Leg probe** (prompt + `first_frame` image): output frame 0 ≡ input still
   (PSNR 31.6 dB), forward-glide prompt obeyed, billed the advertised cell

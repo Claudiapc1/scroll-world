@@ -46,28 +46,31 @@ cp -R scroll-world/skills/scroll-world ~/.codex/skills/    # Codex
 
 ## Requirements
 
+- The [Monid CLI](https://monid.ai) with an API key and balance — the **default
+  video-chain backend** (Seedance 2.0, billed per clip in USD; see below).
 - The [Higgsfield CLI](https://higgsfield.ai), authenticated (`higgsfield auth login`),
-  with credits.
+  with credits — renders the scene stills, the `kling3_0` fallback, and the whole
+  chain when Monid is absent.
 - `ffmpeg` / `ffprobe` for frame extraction and encoding.
 - Python 3 with Pillow (for the mobile portrait canvases; also the optional
   transparent-scene knockout).
 - The [Codex CLI](https://github.com/openai/codex) (optional) — if present, the scene
   stills can be generated through Codex's built-in `image_gen` (the same GPT Image
   model), billed to a ChatGPT subscription instead of Higgsfield credits.
-- The [Monid CLI](https://monid.ai) (optional) — a qualified pay-per-clip video
-  backend: the same Seedance 2.0 chain billed per clip in USD instead of
-  Higgsfield credits (verified 2026-07-25: first/last-frame conditioning
-  frame-locks; frames travel via Monid's free workspace file system). Useful as a
-  no-subscription alternative or a mid-build top-up when credits run dry. The
-  skill re-checks the endpoint schema each build and keeps qualification probes
-  in the pipeline for when the catalog changes.
+- About the Monid default: verified 2026-07-25 — first/last-frame conditioning
+  frame-locks, so it renders the full seamless chain; frames travel via Monid's
+  free workspace file system. Pay-per-use with no subscription or monthly expiry
+  (a 6-scene 1080p chain ≈ $27). The skill re-checks the endpoint schema each
+  build and keeps qualification probes in the pipeline for when the catalog
+  changes; Higgsfield credits remain the fallback biller.
 
 ## What it does
 
-It leans on [Higgsfield](https://higgsfield.ai) for the art: cohesive isometric diorama
-scenes (GPT Image 2 — via Higgsfield, or the Codex CLI on a ChatGPT subscription) and the
-camera flights themselves (Seedance or Kling image-to-video — only models that can
-frame-lock a seam), scrubbed
+It generates the art with AI: cohesive isometric diorama scenes (GPT Image 2 — via
+Higgsfield, or the Codex CLI on a ChatGPT subscription) and the camera flights
+themselves (Seedance image-to-video via **Monid by default**, pay-per-clip; Seedance
+or Kling on Higgsfield credits as fallback — only models that can frame-lock a
+seam), scrubbed
 by scroll position — the same technique behind Apple's scroll-through product pages. The
 camera genuinely moves; scroll only drives time. It's **framework-agnostic**: you get the
 Higgsfield pipeline, the prompt templates, and a portable vanilla-JS scrub engine that
@@ -104,11 +107,12 @@ skills/scroll-world/
 
 ## Notes
 
-- Asset generation costs Higgsfield credits (~N image gens + ~2N-1 video gens for N
-  scenes; the mobile chain doubles the video gens) and takes a while — the skill runs
-  generations in the background and polls. Per-generation pricing isn't exposed by the
-  CLI, so the skill calibrates against your live balance and states the estimated total
-  before spending.
+- Asset generation costs money (~N image gens on Higgsfield credits + ~2N-1 video
+  gens billed per clip on Monid by default; the mobile chain doubles the video gens)
+  and takes a while — the skill runs generations in the background and polls. Monid
+  pricing is per-token and printed per run; Higgsfield pricing isn't exposed by its
+  CLI, so the skill calibrates against your live balance. Either way the estimated
+  total is stated before spending.
 - The generated `.mp4`/`.webp` assets are produced per project; they're not shipped here.
 
 ## Star History
