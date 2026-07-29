@@ -42,7 +42,7 @@ gen_still() { # name
 for n in $NAMES; do gen_still "$n" & done ; wait
 ```
 
-Codex variant (STILLS_SOURCE=codex, SKILL Step 1.6 — subscription-billed, zero
+Codex variant (STILLS_SOURCE=codex, SKILL Step 1.7 — subscription-billed, zero
 credits; ~1–3 min each, parallelize in small batches):
 
 ```bash
@@ -170,14 +170,14 @@ If phone scrubbing still stutters, tighten the GOP further (`-g 2`, or `-g 1` fo
 the mobile encode still pays off — the tighter GOP is what makes phone seeks cheap. All-mobile encodes stay 16:9 — the engine
 centre-crops them; see the portrait note in SKILL Step 8 / prompts.md.
 
-## 6b. Native 9:16 portrait chain — THE mobile version (Step 1.5 opt-in)
+## 6b. Native 9:16 portrait chain — THE mobile version (Step 1.6 opt-in)
 
 When the user opts into mobile, this is what they get: a **parallel 9:16 chain** rendered
 natively for phones and shipped as the mobile variants — never the §6 crops (those are the
 no-credits stopgap). Same seam laws as the main chain — the portrait chain frame-locks
 against its own rendered frames, never the landscape ones. Budget ~2N-1 video gens +
 re-rolls (interiors trip the NSFW filter in portrait too); state the credit cost at the
-Step 1.5 interview.
+Step 1.6 interview.
 
 1. **Portrait start canvases.** Don't hand the video model a 3:2 still and hope: composite
    each scene onto a 1080×1920 canvas in the page bg colour (island at ~94% width, visual
