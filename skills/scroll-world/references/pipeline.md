@@ -46,10 +46,10 @@ Codex variant (STILLS_SOURCE=codex, SKILL Step 1.7 — subscription-billed, zero
 credits; ~1–3 min each, parallelize in small batches):
 
 ```bash
-gen_still_codex() { # name
+gen_still_codex() { # name   (< /dev/null is REQUIRED for parallel calls — see SKILL Gotchas)
   codex exec -C "$WORK" -s workspace-write --skip-git-repo-check \
     'Use the image generation tool ($imagegen) to generate: '"$(cat "$WORK/still_$1.txt")"' Wide 3:2 landscape, high resolution. Save it as ./still_'"$1"'.png. Do not do anything else.' \
-    > "$WORK/still_$1.codex.log" 2>&1
+    > "$WORK/still_$1.codex.log" 2>&1 < /dev/null
   [ -f "$WORK/still_$1.png" ] && echo "still $1 ok (codex)" || echo "still $1 FAIL (see .codex.log)"
 }
 ```

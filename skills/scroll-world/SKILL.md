@@ -232,12 +232,15 @@ Subject: <what is in THIS diorama>.
 
   ```bash
   codex exec -C "$WORK" -s workspace-write --skip-git-repo-check \
-    'Use the image generation tool ($imagegen) to generate: '"$(cat "$WORK/still_i.txt")"' Wide 3:2 landscape, high resolution. Save it as ./still_i.png. Do not do anything else.'
+    'Use the image generation tool ($imagegen) to generate: '"$(cat "$WORK/still_i.txt")"' Wide 3:2 landscape, high resolution. Save it as ./still_i.png. Do not do anything else.' \
+    < /dev/null
   ```
 
   Single-quote the `$imagegen` segment (the shell must not expand it); if editing
   with reference images, the prompt goes BEFORE any `-i` flag (it's variadic).
-  ~1–3 min per image; run a few in parallel, not all N at once. Output lands at
+  ~1–3 min per image; run a few in parallel, not all N at once — and keep the
+  `< /dev/null`: parallel `codex exec` calls sharing a script's stdin hang
+  waiting for input (Gotchas). Output lands at
   1536×1024 (3:2) — fine for `--start-image` and posters. Everything downstream
   (cohesion review, knockout, dives) is unchanged.
 - A generation may fail transiently (HTTP 503) — re-roll that one individually; don't
@@ -730,6 +733,11 @@ is the thing most likely to be wrong:
   late July 2026, then gained first/last-frame support). `monid inspect` before each
   build; re-run the Step 4 qualification probes when the Input schema differs from
   what pipeline.md documents.
+- **Codex stills hang at "Reading additional input from stdin..."** → parallel
+  `codex exec` calls launched from one script share the parent's stdin; one wins it,
+  the rest block forever (observed: 1 of 3 completed, 2 hung, the second batch never
+  started). Always append `< /dev/null` to every backgrounded `codex exec` — the
+  pipeline's `gen_still_codex` has it; keep it if you adapt the command.
 - **White-box scenes** → `gpt_image_2` returns a solid bg; either match the page bg to it
   or knock it out (Step 3).
 - **bash 3.2** on macOS → no associative arrays in scripts.
